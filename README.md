@@ -4,13 +4,16 @@ After Effects CC plugin for converting animations to SVGA source file.
 
 ## Installation
 
-[Click Here Download ZIP](https://github.com/yyued/SVGA-AEConverter/archive/master.zip)
+Download the latest build for your platform:
+
+* Windows: [SVGA-AEConverter_Windows_v1.1.0_20261125.zip](https://github.com/jarryleo/SVGA-AEConverter/releases/download/1.1.0/SVGA-AEConverter_Windows_v1.1.0_20261125.zip)
+* macOS: [SVGA-AEConverter_Mac_v1.1.0_20261125.zip](https://github.com/jarryleo/SVGA-AEConverter/releases/download/1.1.0/SVGA-AEConverter_Mac_v1.1.0_20261125.zip)
 
 ### windows
 
-* Unzip windows / SVGAConverter_AE.zip;
-* Running **install.exe** -> **Install Now** ;
-* Open your After Effects and save your project which will be converted;
+* Unzip the downloaded Windows package;
+* Double-click **安装.bat** (installs into the user-level CEP extensions folder, no administrator required);
+* Open After Effects, check **Edit > Preferences > General > Allow Scripts to Write Files and Access Network**, then restart After Effects;
 * Select the **SVGA-AEConverter** extension on Window > Extensions > SVGAConverter_AE;
 * Select 输出路径 > 开始转换 
 * Wait a moment, SVGA source file Will be generated in the directory you choose;
@@ -18,8 +21,9 @@ After Effects CC plugin for converting animations to SVGA source file.
 * Use the Right Button to start / pause the preview.
 
 ### mac 
-* Download、install and run [ZXP Installer](http://updates.aescripts.com/zxp-installer/mac/update-mac.zip);
-* Select Menu > File > Open, select the converter installer downloaded;
+* Unzip the downloaded macOS package;
+* If Gatekeeper blocks the script, right-click **安装.command** → Open (or run `xattr -cr <unzipped folder>` in Terminal), then double-click **安装.command** to install;
+* Open After Effects, check **After Effects > Preferences > General > Allow Scripts to Write Files and Access Network**, then restart After Effects;
 * Select the **SVGA-AEConverter** extension on Window > Extensions > SVGAConverter_AE;
 * Select 输出路径 > 开始转换 
 * Wait a moment, the SVGA source file Will be generated in the directory you choose;
@@ -62,22 +66,25 @@ pwsh -File install.ps1 -MachineWide   # 需要管理员：同时装到 Program F
 
 ## 用法
 
-[点此下载压缩包](https://github.com/yyued/SVGA-AEConverter/archive/master.zip)
+请按平台下载最新安装包：
+
+* Windows：[SVGA-AEConverter_Windows_v1.1.0_20261125.zip](https://github.com/jarryleo/SVGA-AEConverter/releases/download/1.1.0/SVGA-AEConverter_Windows_v1.1.0_20261125.zip)
+* macOS：[SVGA-AEConverter_Mac_v1.1.0_20261125.zip](https://github.com/jarryleo/SVGA-AEConverter/releases/download/1.1.0/SVGA-AEConverter_Mac_v1.1.0_20261125.zip)
 
 ### windows
 
-* 解压 windows / SVGAConverter_AE.zip;
-* 运行解压后得到的 install.exe -> Install Now 完成安装;
-* 打开 After effects 将 **被转换文件** 保存;
+* 解压下载的 Windows 包;
+* 双击 **安装.bat**（安装到当前用户的 CEP 扩展目录，无需管理员权限）;
+* 打开 After Effects，在 编辑 > 偏好设置 > 常规 勾选"允许脚本写入文件和访问网络"，然后重启 AE;
 * 选择菜单 > 窗口 > 扩展 > SVGAConverter_AE;
 * 选择 输出路径 > 开始转换 稍等片刻，SVGA 文件就会生成在您所输出的目录并开始播放;
 * 您也可以直接点击 选择播放文件 直接播放本地的 *.svga文件;
 * 使用鼠标右键可以 开始/暂停播放。
 
 ### mac 
-* 下载、安装并运行 Adobe 的插件安装程序 [ZXP Installer](http://updates.aescripts.com/zxp-installer/mac/update-mac.zip);
-* 选择 菜单 > 文件 > 打开，选中 mac/SVGAConverter_AE.zxp，根据引导完成安装;
-* 打开 After Effects 将 **被转换文件** 保存;
+* 解压下载的 macOS 包;
+* 若提示"来自身份不明的开发者"，在 安装.command 上右键 → 打开（或终端执行 xattr -cr <解压目录>），再双击 安装.command 完成安装;
+* 打开 After Effects，在 偏好设置 > 常规 勾选"允许脚本写入文件和访问网络"，然后重启 AE;
 * 选择菜单 > 窗口 > 扩展 > SVGAConverter_AE;
 * 选择 输出路径 > 开始转换 稍等片刻，SVGA 文件就会生成在您所输出的目录并开始播放;
 * 您也可以直接点击 选择播放文件 直接播放本地的 *.svga文件;
