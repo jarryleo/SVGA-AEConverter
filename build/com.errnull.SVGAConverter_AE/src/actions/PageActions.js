@@ -97,6 +97,9 @@ function startConvert() {
         return;
     }
 
+    var memoryEl = document.getElementById('memoryUsage');
+    if (memoryEl) { memoryEl.textContent = '预估内存：计算中…'; }
+
     createTempFolder(function () {
         var startConvertBtn = document.getElementById("startConvertBtn");
         startConvertBtn.disabled = true;
@@ -167,6 +170,9 @@ function startConvert() {
                     }
                     var imageList = files;
 
+                    //根据导出的贴图尺寸预估安卓设备内存占用
+                    updateMemoryUsage(imagePath, imageList);
+
                     if(CURRENT_OUTPUT_VERSION == "2.0"){
                         copyToBinary(imagePath, imageList);
                     }else{
@@ -210,15 +216,102 @@ function createTempFolder(callback) {
 
 function preview(filePath) {
 
-    var fileName = filePath;
+    //兜底初始化：面板启动时 loading.svga 若没加载成功，这里再创建一次播放器，保证导出后能直接预览
+    try {
+        if (!parser) { parser = new SVGA.Parser(); }
+        if (!player) { player = new Svga.Player('#canvas'); }
+    } catch (e) {
+        console.log('preview init failed: ' + e.message);
+        return;
+    }
+    if (!parser || !player) { return; }
 
-    parser.load(fileName, function (videoItem) {
+    try {
+        player.stopAnimation();
+    } catch (e) { }
+
+    parser.load(filePath, function (videoItem) {
+
+        if (!videoItem) { return; }
+
         player.setContentMode("AspectFit");
         player.setClipsToBounds(true);
-        
+
         player.setVideoItem(videoItem);
         player.startAnimation();
-    })
+    });
+}
+
+// —— 安卓内存预估（ARGB_8888：4 字节 / 像素）——
+function readPngSize(filePath) {
+    try {
+        var fd = fs.openSync(filePath, 'r');
+        var buf = Buffer.alloc(24);
+        fs.readSync(fd, buf, 0, 24, 0);
+        fs.closeSync(fd);
+        if (buf.readUInt32BE(0) !== 0x89504E47) { return null; }  // PNG 签名
+        return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+    } catch (e) {
+        return null;
+    }
+}
+
+function readJpegSize(filePath) {
+    try {
+        var data = fs.readFileSync(filePath);
+        var i = 2; // 跳过 SOI
+        while (i < data.length - 9) {
+            if (data[i] !== 0xFF) { i++; continue; }
+            var marker = data[i + 1];
+            if (marker === 0xD8 || marker === 0x01 || (marker >= 0xD0 && marker <= 0xD7)) { i += 2; continue; }
+            var len = data.readUInt16BE(i + 2);
+            if (marker >= 0xC0 && marker <= 0xCF && marker !== 0xC4 && marker !== 0xC8 && marker !== 0xCC) {
+                return { width: data.readUInt16BE(i + 7), height: data.readUInt16BE(i + 5) };
+            }
+            i += 2 + len;
+        }
+        return null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function readImageSize(filePath) {
+    var png = readPngSize(filePath);
+    if (png) { return png; }
+    return readJpegSize(filePath);
+}
+
+function estimateMemoryMB(dir, imageList) {
+    var totalBytes = 0;
+    var count = 0;
+    var unknown = 0;
+    for (var i = 0; i < imageList.length; i++) {
+        var name = imageList[i];
+        if (name === 'movie.spec') { continue; }
+        count++;
+        var size = readImageSize(nodePath.join(dir, name));
+        if (size && size.width > 0 && size.height > 0) {
+            totalBytes += size.width * size.height * 4;
+        } else {
+            unknown++;
+        }
+    }
+    return { mb: totalBytes / 1048576, count: count, unknown: unknown };
+}
+
+function updateMemoryUsage(dir, imageList) {
+    var el = document.getElementById('memoryUsage');
+    if (!el) { return; }
+    try {
+        var result = estimateMemoryMB(dir, imageList);
+        el.textContent = '预估内存：' + result.mb.toFixed(2) + ' MB' +
+            (result.unknown > 0 ? '（' + result.unknown + ' 张无法解析）' : '');
+        el.title = '按安卓 ARGB_8888（4 字节/像素）估算 ' + result.count + ' 张贴图解码后的内存占用';
+    } catch (e) {
+        el.textContent = '预估内存：计算失败';
+        console.log('estimate memory failed: ' + e.message);
+    }
 }
 
 function copyToBinary(zipPath, imageList) {

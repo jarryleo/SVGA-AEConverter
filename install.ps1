@@ -16,7 +16,25 @@ $jsxOut = Join-Path $source "jsx\svga.jsx"
 $stage = Join-Path $root "build\com.errnull.SVGAConverter_AE"
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
+# 版本号唯一来源：package.json
+$pkg = Get-Content (Join-Path $root "package.json") -Raw | ConvertFrom-Json
+$version = $pkg.version
+
 function Write-Step($text) { Write-Host "[SVGA] $text" -ForegroundColor Cyan }
+
+# 把面板左下角署名里的 <span id="authorVersion"> 注入为 package.json 的版本号
+function Set-PanelVersion($htmlPath) {
+    if (-not (Test-Path -LiteralPath $htmlPath)) { return }
+    $html = [System.IO.File]::ReadAllText($htmlPath, [System.Text.Encoding]::UTF8)
+    $pattern = '(<span id="authorVersion">)([^<]*)(</span>)'
+    if ([regex]::IsMatch($html, $pattern)) {
+        $injected = [regex]::Replace($html, $pattern, '${1}v' + $version + '${3}')
+        [System.IO.File]::WriteAllText($htmlPath, $injected, $utf8NoBom)
+        Write-Step "面板版本号注入：v$version"
+    } else {
+        Write-Step "面板版本号注入：未找到占位标签，跳过（v$version）"
+    }
+}
 
 # 1. 重建 jsx/svga.jsx：等价于 gulpfile.js 里的 concat 任务
 if (-not $SkipBuild) {
@@ -51,6 +69,9 @@ foreach ($dir in @("CSXS", "jsx", "src", "pngquant", "node_modules")) {
 }
 Copy-Item -LiteralPath (Join-Path $source "index.html") -Destination $stage
 Copy-Item -LiteralPath (Join-Path $root "updateInfo") -Destination $stage
+
+# 面板左下角署名版本号：由 package.json 注入
+Set-PanelVersion (Join-Path $stage "index.html")
 
 # 去掉 macOS 打包残留的 .DS_Store，避免 CEP 误读
 Get-ChildItem -Path $stage -Recurse -Filter ".DS_Store" -Force -ErrorAction SilentlyContinue |

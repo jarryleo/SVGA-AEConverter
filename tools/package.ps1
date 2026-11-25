@@ -23,6 +23,13 @@ function New-Stage($dest) {
     }
     Copy-Item -LiteralPath (Join-Path $source "index.html") -Destination $ext
     Copy-Item -LiteralPath (Join-Path $root "updateInfo") -Destination $ext
+
+    # 面板左下角署名版本号：由 package.json 注入
+    $panel = Join-Path $ext "index.html"
+    $html = [IO.File]::ReadAllText($panel, [Text.Encoding]::UTF8)
+    $html = [regex]::Replace($html, '(<span id="authorVersion">)([^<]*)(</span>)', '${1}v' + $version + '${3}')
+    [IO.File]::WriteAllText($panel, $html, (New-Object System.Text.UTF8Encoding($false)))
+
     Get-ChildItem -Path $ext -Recurse -Filter ".DS_Store" -Force -ErrorAction SilentlyContinue |
         Remove-Item -Force -ErrorAction SilentlyContinue
     return $ext
