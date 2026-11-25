@@ -4,10 +4,10 @@ After Effects CC plugin for converting animations to SVGA source file.
 
 ## Installation
 
-Download the latest build for your platform:
+Download the latest build for your platform (latest version: **v1.2.0**, 2026-11-25):
 
-* Windows: [SVGA-AEConverter_Windows_v1.1.0_20261125.zip](https://github.com/jarryleo/SVGA-AEConverter/releases/download/1.1.0/SVGA-AEConverter_Windows_v1.1.0_20261125.zip)
-* macOS: [SVGA-AEConverter_Mac_v1.1.0_20261125.zip](https://github.com/jarryleo/SVGA-AEConverter/releases/download/1.1.0/SVGA-AEConverter_Mac_v1.1.0_20261125.zip)
+* Windows: [SVGA-AEConverter_Windows_v1.2.0_20261125.zip](https://github.com/jarryleo/SVGA-AEConverter/releases/download/1.2.0/SVGA-AEConverter_Windows_v1.2.0_20261125.zip)
+* macOS: [SVGA-AEConverter_Mac_v1.2.0_20261125.zip](https://github.com/jarryleo/SVGA-AEConverter/releases/download/1.2.0/SVGA-AEConverter_Mac_v1.2.0_20261125.zip)
 
 ### windows
 
@@ -40,6 +40,15 @@ To test whether the SVGA source file is working properly：
 1. Use the button 选择播放文件 to selete the local SVGA for preview;
 2. Open http://svga.io/svga-preview.html, Drag a SVGA source file or select a file for preview。
 
+## What's new (v1.2.0)
+
+* Works with After Effects CC 2015 through 2024 and later (`[13.0,99.9]` host range);
+* Fixed ghosting where two elements of consecutive frames showed up in the same frame;
+* Fixed the "cannot find Temp.aep" alert that appeared on every export;
+* The generated SVGA is previewed in the panel right after a successful export;
+* Android texture memory estimate (ARGB_8888) shown at the bottom-right of the panel;
+* Author credit at the bottom-left; click it to open the GitHub repository.
+
 
 
 ```
@@ -66,10 +75,10 @@ pwsh -File install.ps1 -MachineWide   # 需要管理员：同时装到 Program F
 
 ## 用法
 
-请按平台下载最新安装包：
+请按平台下载最新安装包（最新版本：**v1.2.0**，2026-11-25）：
 
-* Windows：[SVGA-AEConverter_Windows_v1.1.0_20261125.zip](https://github.com/jarryleo/SVGA-AEConverter/releases/download/1.1.0/SVGA-AEConverter_Windows_v1.1.0_20261125.zip)
-* macOS：[SVGA-AEConverter_Mac_v1.1.0_20261125.zip](https://github.com/jarryleo/SVGA-AEConverter/releases/download/1.1.0/SVGA-AEConverter_Mac_v1.1.0_20261125.zip)
+* Windows：[SVGA-AEConverter_Windows_v1.2.0_20261125.zip](https://github.com/jarryleo/SVGA-AEConverter/releases/download/1.2.0/SVGA-AEConverter_Windows_v1.2.0_20261125.zip)
+* macOS：[SVGA-AEConverter_Mac_v1.2.0_20261125.zip](https://github.com/jarryleo/SVGA-AEConverter/releases/download/1.2.0/SVGA-AEConverter_Mac_v1.2.0_20261125.zip)
 
 ### windows
 
@@ -77,7 +86,7 @@ pwsh -File install.ps1 -MachineWide   # 需要管理员：同时装到 Program F
 * 双击 **安装.bat**（安装到当前用户的 CEP 扩展目录，无需管理员权限）;
 * 打开 After Effects，在 编辑 > 偏好设置 > 常规 勾选"允许脚本写入文件和访问网络"，然后重启 AE;
 * 选择菜单 > 窗口 > 扩展 > SVGAConverter_AE;
-* 选择 输出路径 > 开始转换 稍等片刻，SVGA 文件就会生成在您所输出的目录并开始播放;
+* 选择 输出路径 > 开始转换 稍等片刻，SVGA 文件就会生成在您所输出的目录并自动播放（面板右下角同时显示该动画在安卓设备上的预估内存占用）;
 * 您也可以直接点击 选择播放文件 直接播放本地的 *.svga文件;
 * 使用鼠标右键可以 开始/暂停播放。
 
@@ -86,7 +95,7 @@ pwsh -File install.ps1 -MachineWide   # 需要管理员：同时装到 Program F
 * 若提示"来自身份不明的开发者"，在 安装.command 上右键 → 打开（或终端执行 xattr -cr <解压目录>），再双击 安装.command 完成安装;
 * 打开 After Effects，在 偏好设置 > 常规 勾选"允许脚本写入文件和访问网络"，然后重启 AE;
 * 选择菜单 > 窗口 > 扩展 > SVGAConverter_AE;
-* 选择 输出路径 > 开始转换 稍等片刻，SVGA 文件就会生成在您所输出的目录并开始播放;
+* 选择 输出路径 > 开始转换 稍等片刻，SVGA 文件就会生成在您所输出的目录并自动播放（面板右下角同时显示该动画在安卓设备上的预估内存占用）;
 * 您也可以直接点击 选择播放文件 直接播放本地的 *.svga文件;
 * 使用鼠标右键可以 开始/暂停播放。
 
@@ -99,5 +108,21 @@ pwsh -File install.ps1 -MachineWide   # 需要管理员：同时装到 Program F
 要测试生成文件是否可以正常使用：
 1. 使用 菜单 > 窗口 > 扩展 > SVGAConverter_AE 直接播放本地 SVGA 文件;
 2. 使用浏览器，打开 http://svga.io/svga-preview.html ，选择或拖入 SVGA 源文件，即可预览动画效果。
+
+## 更新记录
+
+### v1.2.0（2026-11-25）
+
+* 兼容 After Effects CC 2015 ~ 2024 及后续版本（宿主版本区间放宽到 `[13.0,99.9]`）;
+* 修复序列帧动画"同一帧出现前后两个元素"的重影问题：采样改为整帧对齐 + 半开区间 `[inPoint, outPoint)`，并消除浮点累加误差;
+* 修复每次导出必弹"找不到工程文件 Temp.aep"的问题（改为先保存再校验）;
+* 新增：导出成功后自动在面板内预览播放生成的 SVGA;
+* 新增：面板右下角显示安卓预估内存占用（按 ARGB_8888 计算 `Σ(宽×高×4)`，单位 MB，保留两位小数）;
+* 新增：面板左下角作者署名，点击跳转 GitHub 仓库;
+* 面板显示版本号由 `package.json` 在构建时自动注入，不再手改。
+
+### v1.1.0（2026-11-25）
+
+* 首个双平台免签名分发包：zip + 安装脚本（`安装.bat` / `安装.command`），无需管理员权限、无需 ZXP Installer。
 
 

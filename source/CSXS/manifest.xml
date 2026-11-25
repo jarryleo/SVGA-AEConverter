@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8" standalone="no"?>
 
-<ExtensionManifest xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" Version="6.0" ExtensionBundleId="com.errnull.SVGAConverter_AE" ExtensionBundleVersion="1.0.1" ExtensionBundleName="SVGAConverter_AE">
+<ExtensionManifest xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" Version="6.0" ExtensionBundleId="com.errnull.SVGAConverter_AE" ExtensionBundleVersion="1.2.0" ExtensionBundleName="SVGAConverter_AE">
     <ExtensionList>
         <Extension Id="com.errnull.SVGAConverter_AE" Version="1.0.1"/>
     </ExtensionList>
