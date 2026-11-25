@@ -35,7 +35,7 @@ class Converter {
             width: this.app.project.activeItem.width,
             height: this.app.project.activeItem.height,
             frameRate: this.app.project.activeItem.frameRate,
-            frameCount: this.app.project.activeItem.frameRate * this.app.project.activeItem.duration,
+            frameCount: Math.round(this.app.project.activeItem.frameRate * this.app.project.activeItem.duration),
         }
     }
 
@@ -183,7 +183,7 @@ class Converter {
 
     concatValues(a: any, b: any, width: number, height: number, startTime: number): any {
         let c: any = JSON.parse(JSON.stringify(a));
-        let startIndex = Math.floor(startTime / (1.0 / Math.round(this.proj.frameRate)));
+        let startIndex = Math.round(startTime * this.proj.frameRate);
         for (let aIndex = startIndex, bIndex = 0; bIndex < b.alpha.length; aIndex++ , bIndex++) {
             if (aIndex < 0) {
                 continue;
@@ -281,31 +281,45 @@ class Converter {
         return c;
     }
 
+    //按帧号对齐采样时间：原来用 cTime += 1/fps 累加，浮点误差会让关键帧边界落在两帧之间
+    frameSampleCount(frameConfig: {frameRate: number, duration: number}): number {
+        var count = Math.round(frameConfig.duration * this.proj.frameRate);
+        return count > 0 ? count : 1;
+    }
+
+    frameTime(frameNum: number): number {
+        return frameNum / this.proj.frameRate;
+    }
+
     requestAlpha(frameConfig: {frameRate: number, duration: number}, prop: AE.KeyframeValues, inPoint: number, outPoint: number): any[] {
         let value: any[] = [];
-        let step = 1.0 / this.proj.frameRate;
-        for (var cTime = 0.0; cTime < frameConfig.duration; cTime += step) {
-            if (inPoint > outPoint) {
-                if (cTime > inPoint || cTime < outPoint) {
-                    value.push(0.0);
-                    continue;
-                }
+        var count = this.frameSampleCount(frameConfig);
+        var epsilon = 0.000001;
+        for (var frameNum = 0; frameNum < count; frameNum++) {
+            var cTime = this.frameTime(frameNum);
+            //AE 中图层可见区间是 [inPoint, outPoint)：outPoint 所在的这一帧已经不显示。
+            //原来用 cTime > outPoint 判断，会把边界帧仍然算作可见，导致前后两个元素在同一帧同时出现（重影）
+            if (cTime < inPoint - epsilon || cTime >= outPoint - epsilon) {
+                value.push(0.0);
+                continue;
             }
-            else if (inPoint < outPoint) {
-                if (cTime < inPoint || cTime > outPoint) {
-                    value.push(0.0);
-                    continue;
-                }
+            var alpha = prop.valueAtTime(cTime, false) / 100.0;
+            //把浮点噪声吸附到 0/1，避免元素以极低透明度残留在相邻帧上
+            if (alpha < 0.001) {
+                alpha = 0.0;
+            } else if (alpha > 0.999) {
+                alpha = 1.0;
             }
-            value.push(prop.valueAtTime(cTime, false) / 100.0);
+            value.push(alpha);
         }
         return value;
     }
 
     requestMatrix(frameConfig: {frameRate: number, duration: number}, transform: AE.Transform, width: number, height: number, object: AE.AVLayer): SVGA.Matrix2D[] {
         let value: SVGA.Matrix2D[] = [];
-        let step = 1.0 / this.proj.frameRate;
-        for (var cTime = 0.0; cTime < frameConfig.duration; cTime += step) {
+        var count = this.frameSampleCount(frameConfig);
+        for (var frameNum = 0; frameNum < count; frameNum++) {
+            var cTime = this.frameTime(frameNum);
             let rotation = transform["Rotation"].valueAtTime(cTime, false);
             let ax = transform["Anchor Point"].valueAtTime(cTime, false)[0];
             let ay = transform["Anchor Point"].valueAtTime(cTime, false)[1];
@@ -338,8 +352,8 @@ class Converter {
 
     requestLayout(frameConfig: {frameRate: number, duration: number}, width: number, height: number): SVGA.Rect2D[] {
         let value: SVGA.Rect2D[] = [];
-        let step = 1.0 / this.proj.frameRate;
-        for (var cTime = 0.0; cTime < frameConfig.duration; cTime += step) {
+        var count = this.frameSampleCount(frameConfig);
+        for (var frameNum = 0; frameNum < count; frameNum++) {
             value.push({ x: 0, y: 0, width: width, height: height });
         }
         return value;
@@ -348,8 +362,9 @@ class Converter {
     requestMask(frameConfig: {frameRate: number, duration: number}, layer: AE.AVLayer, parents: AE.AVLayer[]): string[] {
         let hasMask = false
         let masks: string[] = []
-        let step = 1.0 / this.proj.frameRate;
-        for (var cTime = 0.0; cTime < frameConfig.duration; cTime += step) {
+        var count = this.frameSampleCount(frameConfig);
+        for (var frameNum = 0; frameNum < count; frameNum++) {
+            var cTime = this.frameTime(frameNum);
             let d = ""
             if (layer.mask.numProperties > 0) {
                 let maskElement: AE.MaskElement = (layer.mask as any)(1);
@@ -552,8 +567,9 @@ class Converter {
 
     requestShapes(frameConfig: {frameRate: number, duration: number}, layer: AE.AVLayer): SVGA.Shape2D[][] {
         let values: SVGA.Shape2D[][] = []
-        let step = 1.0 / this.proj.frameRate;
-        for (var cTime = 0.0; cTime < frameConfig.duration; cTime += step) {
+        var count = this.frameSampleCount(frameConfig);
+        for (var frameNum = 0; frameNum < count; frameNum++) {
+            let cTime = this.frameTime(frameNum);
             let value = this.requestShapesAtTime(layer, cTime)
             values.push(value);
         }

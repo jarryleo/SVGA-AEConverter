@@ -4489,7 +4489,7 @@ var Converter = (function () {
             width: this.app.project.activeItem.width,
             height: this.app.project.activeItem.height,
             frameRate: this.app.project.activeItem.frameRate,
-            frameCount: this.app.project.activeItem.frameRate * this.app.project.activeItem.duration,
+            frameCount: Math.round(this.app.project.activeItem.frameRate * this.app.project.activeItem.duration),
         };
     };
     Converter.prototype.loadRes = function (layers, numLayers) {
@@ -4634,7 +4634,7 @@ var Converter = (function () {
     };
     Converter.prototype.concatValues = function (a, b, width, height, startTime) {
         var c = JSON.parse(JSON.stringify(a));
-        var startIndex = Math.floor(startTime / (1.0 / Math.round(this.proj.frameRate)));
+        var startIndex = Math.round(startTime * this.proj.frameRate);
         for (var aIndex = startIndex, bIndex = 0; bIndex < b.alpha.length; aIndex++, bIndex++) {
             if (aIndex < 0) {
                 continue;
@@ -4731,30 +4731,43 @@ var Converter = (function () {
         }
         return c;
     };
+    //按帧号对齐采样时间：原来用 cTime += 1/fps 累加，浮点误差会让关键帧边界落在两帧之间
+    Converter.prototype.frameSampleCount = function (frameConfig) {
+        var count = Math.round(frameConfig.duration * this.proj.frameRate);
+        return count > 0 ? count : 1;
+    };
+    Converter.prototype.frameTime = function (frameNum) {
+        return frameNum / this.proj.frameRate;
+    };
     Converter.prototype.requestAlpha = function (frameConfig, prop, inPoint, outPoint) {
         var value = [];
-        var step = 1.0 / this.proj.frameRate;
-        for (var cTime = 0.0; cTime < frameConfig.duration; cTime += step) {
-            if (inPoint > outPoint) {
-                if (cTime > inPoint || cTime < outPoint) {
-                    value.push(0.0);
-                    continue;
-                }
+        var count = this.frameSampleCount(frameConfig);
+        var epsilon = 0.000001;
+        for (var frameNum = 0; frameNum < count; frameNum++) {
+            var cTime = this.frameTime(frameNum);
+            //AE 中图层可见区间是 [inPoint, outPoint)：outPoint 所在的这一帧已经不显示。
+            //原来用 cTime > outPoint 判断，会把边界帧仍然算作可见，导致前后两个元素在同一帧同时出现（重影）
+            if (cTime < inPoint - epsilon || cTime >= outPoint - epsilon) {
+                value.push(0.0);
+                continue;
             }
-            else if (inPoint < outPoint) {
-                if (cTime < inPoint || cTime > outPoint) {
-                    value.push(0.0);
-                    continue;
-                }
+            var alpha = prop.valueAtTime(cTime, false) / 100.0;
+            //把浮点噪声吸附到 0/1，避免元素以极低透明度残留在相邻帧上
+            if (alpha < 0.001) {
+                alpha = 0.0;
             }
-            value.push(prop.valueAtTime(cTime, false) / 100.0);
+            else if (alpha > 0.999) {
+                alpha = 1.0;
+            }
+            value.push(alpha);
         }
         return value;
     };
     Converter.prototype.requestMatrix = function (frameConfig, transform, width, height, object) {
         var value = [];
-        var step = 1.0 / this.proj.frameRate;
-        for (var cTime = 0.0; cTime < frameConfig.duration; cTime += step) {
+        var count = this.frameSampleCount(frameConfig);
+        for (var frameNum = 0; frameNum < count; frameNum++) {
+            var cTime = this.frameTime(frameNum);
             var rotation = transform["Rotation"].valueAtTime(cTime, false);
             var ax = transform["Anchor Point"].valueAtTime(cTime, false)[0];
             var ay = transform["Anchor Point"].valueAtTime(cTime, false)[1];
@@ -4786,8 +4799,8 @@ var Converter = (function () {
     };
     Converter.prototype.requestLayout = function (frameConfig, width, height) {
         var value = [];
-        var step = 1.0 / this.proj.frameRate;
-        for (var cTime = 0.0; cTime < frameConfig.duration; cTime += step) {
+        var count = this.frameSampleCount(frameConfig);
+        for (var frameNum = 0; frameNum < count; frameNum++) {
             value.push({ x: 0, y: 0, width: width, height: height });
         }
         return value;
@@ -4795,8 +4808,9 @@ var Converter = (function () {
     Converter.prototype.requestMask = function (frameConfig, layer, parents) {
         var hasMask = false;
         var masks = [];
-        var step = 1.0 / this.proj.frameRate;
-        for (var cTime = 0.0; cTime < frameConfig.duration; cTime += step) {
+        var count = this.frameSampleCount(frameConfig);
+        for (var frameNum = 0; frameNum < count; frameNum++) {
+            var cTime = this.frameTime(frameNum);
             var d = "";
             if (layer.mask.numProperties > 0) {
                 var maskElement = layer.mask(1);
@@ -4975,8 +4989,9 @@ var Converter = (function () {
     };
     Converter.prototype.requestShapes = function (frameConfig, layer) {
         var values = [];
-        var step = 1.0 / this.proj.frameRate;
-        for (var cTime = 0.0; cTime < frameConfig.duration; cTime += step) {
+        var count = this.frameSampleCount(frameConfig);
+        for (var frameNum = 0; frameNum < count; frameNum++) {
+            var cTime = this.frameTime(frameNum);
             var value = this.requestShapesAtTime(layer, cTime);
             values.push(value);
         }
