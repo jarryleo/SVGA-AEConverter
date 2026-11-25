@@ -144,78 +144,81 @@
     }
 
     function downloadFile(uri,filename,callback){
-        var stream = fs.createWriteStream(filename);
-        request(uri).pipe(stream).on('close', callback);
+        //request 不可用或网络失败时不能阻断面板初始化
+        if (typeof request !== 'function') {
+            callback();
+            return;
+        }
+        var finished = false;
+        var finish = function () {
+            if (finished) { return; }
+            finished = true;
+            callback();
+        };
+        try {
+            var stream = fs.createWriteStream(filename);
+            stream.on('error', finish);
+            stream.on('close', finish);
+            var req = request(uri);
+            req.on('error', function () {
+                try { stream.end(); } catch (e) { }
+                finish();
+            });
+            req.pipe(stream);
+        } catch (e) {
+            finish();
+        }
     }
 
-    var infoUrl = 'https://raw.githubusercontent.com/yyued/SVGA-AEConverter/master/updateInfo';
-    var infoName = nodePath.join(csInterface.getSystemPath(SystemPath.MY_DOCUMENTS), '.updateInfo');
+    //自动更新检查：仅比较版本，有新版本时打开 Releases 页面，由用户下载对应平台安装包覆盖安装
+    try {
+        var infoUrl = 'https://raw.githubusercontent.com/jarryleo/SVGA-AEConverter/master/updateInfo';
+        var infoName = nodePath.join(csInterface.getSystemPath(SystemPath.MY_DOCUMENTS), '.updateInfo');
+        var currentInfoFile = nodePath.join(csInterface.getSystemPath(SystemPath.EXTENSION), 'updateInfo');
 
-    downloadFile(infoUrl,infoName, function () {
+        downloadFile(infoUrl, infoName, function () {
+            try {
+                if (!fs.existsSync(infoName)) {
+                    return;
+                }
+                var newestText = String(fs.readFileSync(infoName, 'utf-8') || '').trim();
+                try { fs.unlinkSync(infoName); } catch (e) { }
 
-        var newestVersion = parseInt(fs.readFileSync(infoName,'utf-8').split('v').pop());
-        var currentVersion = parseInt(fs.readFileSync(nodePath.join(CURRENT_PROJECT_PATH, 'updateInfo'),'utf-8').split('v').pop());
-        fs.unlinkSync(infoName);
+                if (!/^v\d+/.test(newestText)) {
+                    //远端没有合法 updateInfo（例如仓库尚未发布）时跳过检查
+                    return;
+                }
+                var newestVersion = parseInt(newestText.replace(/^v/, ''));
+                var currentVersion = parseInt(String(fs.readFileSync(currentInfoFile, 'utf-8') || '').replace(/^v/, ''));
+                if (isNaN(newestVersion) || isNaN(currentVersion) || currentVersion >= newestVersion) {
+                    return;
+                }
 
-        if (currentVersion < newestVersion) {
-
-            confirmMessages("主人，现在有更新的版本了哦，更新一下? \\n tip: 下载过慢可以到官网下载最新版本安装哦。",function () {
-
-                var selectPathBtn = document.getElementById("selectPathBtn");
-                selectPathBtn.disabled = true;
-                var selectFile = document.getElementById("selectFile");
-                selectFile.disabled = true;
-
-                var zxpUrl = "https://raw.githubusercontent.com/yyued/SVGA-AEConverter/master/build/1.1.0/SVGAConverter_AE.zxp";
-                var zxpFile = nodePath.join(csInterface.getSystemPath(SystemPath.MY_DOCUMENTS), 'updateAE.zxp');
-                downloadFile(zxpUrl,zxpFile,function () {
-
-                    deleteFlider(CURRENT_PROJECT_PATH, true, false ,function () {
-                        if (csInterface.getOSInformation().indexOf("Mac") >= 0) {
-                            var program = "unzip -o -d " + CURRENT_PROJECT_PATH.replace('Application ', 'Application\\ ') + " " + zxpFile;
-                            spawn.exec(program, function () {
-
-                                alertMessages("更新完成，即将重启。");
-
-                                fs.unlinkSync(zxpFile);
-                                csInterface.closeExtension()
-                            });
-                        }else{
-
-                            var zipToolUrl = "https://raw.githubusercontent.com/yyued/SVGA-AEConverter/master/zip.exe";
-                            var zipToolFile = nodePath.join(csInterface.getSystemPath(SystemPath.MY_DOCUMENTS), 'zip.exe');
-
-                            downloadFile(zipToolUrl, zipToolFile, function () {
-
-                                var program = zipToolFile + " " + zxpFile + " -d " + "\"" + CURRENT_PROJECT_PATH + "\"";
-                                spawn.exec(program, function () {
-
-                                    alertMessages("更新完成，即将重启。");
-
-                                    fs.unlinkSync(zxpFile);
-                                    fs.unlinkSync(zipToolFile);
-                                    csInterface.closeExtension()
-                                });
-
-                            });
-                        }
-                    });
+                confirmMessages("检测到新版本 " + newestText + "，是否打开下载页面？ \\n tip: 下载过慢可以稍后再试。", function () {
+                    csInterface.openURLInDefaultBrowser("https://github.com/jarryleo/SVGA-AEConverter/releases");
+                }, function () {
                 });
-            }, function () {
-            });
-        }
-    });
+            } catch (e) {
+                console.log('update check skipped: ' + e.message);
+            }
+        });
+    } catch (e) {
+        console.log('update check failed: ' + e.message);
+    }
     parser = new SVGA.Parser();
 
-    var loadingName = csInterface.getSystemPath(SystemPath.APPLICATION) + "/src/res/loading.svga";
+    //loading.svga 随扩展发布，必须从扩展目录取（原来取的是 AE 安装目录，必然找不到）
+    var loadingName = csInterface.getSystemPath(SystemPath.EXTENSION) + "/src/res/loading.svga";
 
-    parser.load(loadingName, function (videoItem) {
+    if (fs.existsSync(loadingName)) {
+        parser.load(loadingName, function (videoItem) {
 
-        player = new Svga.Player('#canvas');
+            player = new Svga.Player('#canvas');
 
-        player.setVideoItem(videoItem);
-        player.startAnimation()
-    });
+            player.setVideoItem(videoItem);
+            player.startAnimation()
+        });
+    }
 
     /// 右键菜单。
     csInterface.setContextMenu(

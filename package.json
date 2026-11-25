@@ -8,7 +8,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "http://code.yy.com/ued/SVGA-AEConverter.git"
+    "url": "https://github.com/jarryleo/SVGA-AEConverter.git"
+  },
+  "homepage": "https://github.com/jarryleo/SVGA-AEConverter",
+  "bugs": {
+    "url": "https://github.com/jarryleo/SVGA-AEConverter/issues"
   },
   "author": "",
   "license": "ISC",

@@ -3,6 +3,13 @@ var fs = require('fs');
 var nodePath = require("path");
 var zlib = require('zlib');
 var spawn = require('child_process');
+//面板的自动更新检查（index.html 的 downloadFile）依赖 request，不能删除
+var request = null;
+try {
+    request = require('request');
+} catch (e) {
+    console.log('request module unavailable: ' + e.message);
+}
 
 var outPutPath;
 var inputPath;
