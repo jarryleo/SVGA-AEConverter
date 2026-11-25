@@ -47,6 +47,19 @@ To test whether the SVGA source file is working properly：
 
 本工具适用于 After Effects CC 系列，使用本工具可以将 AEP 文件转换为 SVGA 文件。
 
+> 当前分支已做版本兼容改造：`CSXS/manifest.xml` 的宿主版本区间放宽为 `[13.0,99.9]`，即 **AE CC 2015 至 2024 及后续版本**都可加载；面板/脚本层补充了不同 AE 版本的路径、渲染模板、序列帧命名差异处理。
+
+## 本机安装（Windows，任意 AE 版本）
+
+```
+pwsh -File install.ps1          # 重建 jsx/svga.jsx + 用户级安装 + 开启 CEP 调试模式
+pwsh -File install.ps1 -MachineWide   # 需要管理员：同时装到 Program Files 的 CEP 目录
+```
+
+安装后重启 After Effects，在 窗口 > 扩展 > SVGAConverter_AE 打开面板。
+
+修改转换逻辑后，`source/app/svga.js`、`source/converter/converter.js`、`source/writer/writer.js` 属于编译产物，需要和同名 `.ts` 同步修改（或安装 TypeScript 后重新 `tsc source/app/svga.ts --target ES5`），再执行一次 `install.ps1` 即可生效。
+
 ## 用法
 
 [点此下载压缩包](https://github.com/yyued/SVGA-AEConverter/archive/master.zip)

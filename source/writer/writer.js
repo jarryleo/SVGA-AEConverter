@@ -8,10 +8,16 @@
  */
 var Writer = (function () {
     function Writer(converter, outputPath) {
-        this.outPath = app.project.file.path + "/svga_works";
+        this.outPath = undefined;
         this.converter = converter;
-        if (outputPath != null) {
+        if (outputPath) {
             this.outPath = outputPath;
+        }
+        else if (app.project && app.project.file) {
+            this.outPath = app.project.file.path + "/svga_works";
+        }
+        else {
+            throw new Error("工程尚未保存，请先保存 .aep 工程文件。");
         }
     }
     Writer.prototype.write = function () {
@@ -20,12 +26,19 @@ var Writer = (function () {
         this.writeSpec();
     };
     Writer.prototype.createOutputDirectories = function () {
-        var files = new Folder(this.outPath).getFiles();
+        var folder = new Folder(this.outPath);
+        var files = [];
+        try {
+            files = folder.getFiles();
+        }
+        catch (e) {
+            files = [];
+        }
         for (var index = 0; index < files.length; index++) {
             var element = files[index];
             element.remove();
         }
-        new Folder(this.outPath).create();
+        folder.create();
     };
     Writer.prototype.copyImages = function () {
         var _File = File;
@@ -72,18 +85,43 @@ var Writer = (function () {
         helperComp.layers[2].remove();
         var RQbackup = storeRenderQueue();
         app.project.renderQueue.items.add(helperComp);
-        app.project.renderQueue.item(app.project.renderQueue.numItems).render = true;
-        var templateTemp = app.project.renderQueue.item(app.project.renderQueue.numItems).outputModule(1).templates;
-        var setPNG = app.project.renderQueue.item(app.project.renderQueue.numItems).outputModule(1).templates[templateTemp.length - 1];
-        app.project.renderQueue.item(app.project.renderQueue.numItems).outputModule(1).applyTemplate(setPNG);
-        app.project.renderQueue.item(app.project.renderQueue.numItems).outputModule(1).file = new _File(this.outPath + "/psd_" + element.psdID + ".png");
+        var rqItem = app.project.renderQueue.item(app.project.renderQueue.numItems);
+        rqItem.render = true;
+        var om = rqItem.outputModule(1);
+        var templates = om.templates;
+        //不同 AE 版本的输出模板顺序会变，优先选名字里带 PNG 的模板
+        var setPNG = templates[templates.length - 1];
+        for (var t = 0; t < templates.length; t++) {
+            if (String(templates[t]).toUpperCase().indexOf("PNG") >= 0) {
+                setPNG = templates[t];
+                break;
+            }
+        }
+        om.applyTemplate(setPNG);
+        om.file = new _File(this.outPath + "/psd_" + element.psdID + ".png");
         app.project.renderQueue.render();
         app.project.renderQueue.item(app.project.renderQueue.numItems).remove();
         if (RQbackup != null) {
             restoreRenderQueue(RQbackup);
         }
         helperComp.remove();
-        (new _File(this.outPath + "/psd_" + element.psdID + ".png00000")).rename("psd_" + element.psdID + ".png");
+        this.renameRenderedPng(element.psdID);
+    };
+    Writer.prototype.renameRenderedPng = function (psdID) {
+        var _File = File;
+        var target = new _File(this.outPath + "/psd_" + psdID + ".png");
+        if (target.exists) {
+            return;
+        }
+        //各 AE 版本对序列帧的命名规则不同（如 psd_1.png00000 / psd_100000.png），统一扫描后改名
+        var files = new Folder(this.outPath).getFiles();
+        for (var index = 0; index < files.length; index++) {
+            var name = files[index].name;
+            if (name.indexOf("psd_" + psdID) === 0 && name.indexOf(".png") >= 0 && name !== "psd_" + psdID + ".png") {
+                files[index].rename("psd_" + psdID + ".png");
+                return;
+            }
+        }
     };
     Writer.prototype.writeSpec = function () {
         var _File = File;

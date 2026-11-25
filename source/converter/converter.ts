@@ -17,6 +17,12 @@ class Converter {
 
     constructor(app: AE.App) {
         this.app = app;
+        if (!app.project || !app.project.activeItem) {
+            throw new Error("没有可转换的合成，请先打开并保存工程。");
+        }
+        if (!(app.project.activeItem instanceof CompItem)) {
+            throw new Error("当前激活的素材不是合成（Comp），请在项目面板中双击打开要转换的合成。");
+        }
         this.loadProj();
         this.loadRes(app.project.activeItem.layers, app.project.activeItem.layers.length);
         this.loadLayer({frameRate: app.project.activeItem.frameRate, duration: app.project.activeItem.duration}, app.project.activeItem.layers, app.project.activeItem.layers.length, undefined, undefined, []);

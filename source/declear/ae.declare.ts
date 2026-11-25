@@ -6,6 +6,10 @@
  * Build: npm install & npm start
  */
 
+declare let CompItem: any;
+declare let Project: any;
+declare let appVersion: any;
+
 namespace AE {
 
     export interface App {

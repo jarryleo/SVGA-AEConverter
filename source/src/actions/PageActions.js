@@ -3,7 +3,6 @@ var fs = require('fs');
 var nodePath = require("path");
 var zlib = require('zlib');
 var spawn = require('child_process');
-var request = require('request');
 
 var outPutPath;
 var inputPath;
@@ -17,6 +16,7 @@ var CURRENT_SOURCE_PATH;
 var CURRENT_SOURCE_NAME;
 var CURRENT_FILE_PATH;
 var CURRENT_PROJECT_PATH = csInterface.getSystemPath(SystemPath.APPLICATION);
+var EXTENSION_PATH = csInterface.getSystemPath(SystemPath.EXTENSION);
 var TEMP_SOURCE_PATH = nodePath.join(csInterface.getSystemPath(SystemPath.MY_DOCUMENTS), '_WORKINGTEMP_');
 var CURRENT_OUTPUT_VERSION = "2.0";
 
@@ -29,6 +29,22 @@ window.onunload = function()
 
 function updateInfo(callback) {
     csInterface.evalScript("getActiveInfo()", function (result) {
+
+        var errMsg = null;
+        if (typeof result !== "string" || result.indexOf("EvalScript error") >= 0) {
+            errMsg = "调用 After Effects 脚本失败：" + result;
+        } else if (result === "NO_PROJECT") {
+            errMsg = "当前没有打开 After Effects 工程，请先打开要转换的工程。";
+        } else if (result === "NO_FILE") {
+            errMsg = "当前工程尚未保存，请先保存 .aep 工程文件。";
+        } else if (result === "NO_COMP") {
+            errMsg = "未激活任何合成，请在项目面板中双击打开要转换的合成。";
+        }
+
+        if (errMsg) {
+            alertMessages(errMsg);
+            return;
+        }
 
         var infoArr = result.split('_and_');
         CURRENT_FILE_PATH = infoArr[0];
@@ -67,50 +83,92 @@ function startConvert() {
 
     if(outPutPath == null || outPutPath == undefined || outPutPath == ''){
         alertMessages("请先选择输出路径...");
+        return;
+    }
+    if(!CURRENT_FILE_PATH){
+        alertMessages("未能获取当前工程信息，请重新选择一个输出路径后再试。");
+        return;
+    }
 
-    }else {
-        createTempFolder(function () {
-            var startConvertBtn = document.getElementById("startConvertBtn");
-            startConvertBtn.disabled = true;
-            
-            var dropDownBtn = document.getElementById("dropDownBtn");
-            dropDownBtn.disabled = true;
+    createTempFolder(function () {
+        var startConvertBtn = document.getElementById("startConvertBtn");
+        startConvertBtn.disabled = true;
 
-            var tempPath =  nodePath.join(TEMP_SOURCE_PATH, 'Temp.aep');
-            var OSVersion = csInterface.getOSInformation();
-            if (OSVersion.indexOf("Windows") >= 0){
+        var dropDownBtn = document.getElementById("dropDownBtn");
+        dropDownBtn.disabled = true;
 
-                tempPath =  tempPath.split("\\").join("\\\\");
-                CURRENT_FILE_PATH =  CURRENT_FILE_PATH.split("\\").join("\\\\");
+        var setBusy = function (busy) {
+            startConvertBtn.disabled = busy;
+            dropDownBtn.disabled = busy;
+        };
+
+        var tempPath = nodePath.join(TEMP_SOURCE_PATH, 'Temp.aep');
+        var tempWorkPath = nodePath.join(TEMP_SOURCE_PATH, 'svga_works');
+        var OSVersion = csInterface.getOSInformation();
+
+        //evalScript 的字符串参数必须转义反斜杠，Windows 下尤其重要
+        var escapeForJsx = function (p) {
+            return OSVersion.indexOf("Windows") >= 0 ? String(p).split("\\").join("\\\\") : String(p);
+        };
+        //统一转成正斜杠，ExtendScript 和 Node 都能识别，避免不同 AE 版本下的路径解析差异
+        var toSlash = function (p) {
+            return String(p).split("\\").join("/");
+        };
+
+        csInterface.evalScript("correctMessage('" + escapeForJsx(tempPath) + "');", function (result) {
+
+            //临时工程保存失败时不要继续转换，否则会拿原工程去转，结果不可控
+            if (typeof result === "string" && result.indexOf("ERROR:") === 0) {
+                alertMessages(result.substring("ERROR:".length));
+                setBusy(false);
+                return;
             }
-            csInterface.evalScript("correctMessage('"+ tempPath +"');", function (result) {
 
-                csInterface.evalScript("startConvert('"+nodePath.join(TEMP_SOURCE_PATH, 'svga_works') +"');", function (result) {
+            csInterface.evalScript("startConvert('" + escapeForJsx(toSlash(tempWorkPath)) + "');", function (result) {
 
-                    csInterface.evalScript("openProject('"+ CURRENT_FILE_PATH +"');");
-                    var imagePath = result;
-                    workPath = result;
+                csInterface.evalScript("openProject('" + escapeForJsx(CURRENT_FILE_PATH) + "');");
 
-                    //获取图片资源列表
-                    fs.readdir(imagePath, function(err,files){
+                var errMsg = null;
+                if (typeof result !== "string" || result.indexOf("EvalScript error") >= 0) {
+                    errMsg = "转换脚本执行失败：" + result;
+                } else if (result.indexOf("ERROR:") === 0) {
+                    errMsg = result.substring("ERROR:".length);
+                }
 
-                        for (var i = 0; i < files.length; i++) {
-                            if(files[i] == "movie.spec"){
-                                files.splice(i, 1);
-                            }
+                if (errMsg) {
+                    alertMessages(errMsg);
+                    setBusy(false);
+                    return;
+                }
+
+                var imagePath = toSlash(result);
+                workPath = imagePath;
+
+                //获取图片资源列表
+                fs.readdir(imagePath, function(err, files){
+
+                    if (err) {
+                        alertMessages("读取转换结果目录失败：" + err.message);
+                        setBusy(false);
+                        return;
+                    }
+
+                    for (var i = files.length - 1; i >= 0; i--) {
+                        if(files[i] == "movie.spec"){
+                            files.splice(i, 1);
                         }
-                        var imageList = files;
+                    }
+                    var imageList = files;
 
-                        if(CURRENT_OUTPUT_VERSION == "2.0"){
-                            copyToBinary(imagePath, imageList);
-                        }else{
-                            copyToZip(imagePath, imageList);
-                        }
-                    });
+                    if(CURRENT_OUTPUT_VERSION == "2.0"){
+                        copyToBinary(imagePath, imageList);
+                    }else{
+                        copyToZip(imagePath, imageList);
+                    }
                 });
             });
         });
-    }
+    });
 }
 
 function changeToVersion(version){
@@ -431,25 +489,37 @@ function pngquantImage(inImgPath, outImgPath, callback) {
     var OSVersion = csInterface.getOSInformation();
     if (OSVersion.indexOf("Windows") >= 0) {
 
-        program = nodePath.join(CURRENT_PROJECT_PATH, 'pngquant', 'WINDOWS', 'pngquant.exe');
-        program = '\"' + program + '\"';
+        //pngquant 随扩展一起发布，必须从扩展目录取，而不是 AE 安装目录（各版本 AE 路径都不一样）
+        program = nodePath.join(EXTENSION_PATH, 'pngquant', 'WINDOWS', 'pngquant.exe');
 
     } else if (OSVersion.indexOf("Mac") >= 0) {
 
-        program = nodePath.join(CURRENT_PROJECT_PATH, 'pngquant', 'OSX', 'pngquant').replace('Application ', 'Application\\ ');
+        program = nodePath.join(EXTENSION_PATH, 'pngquant', 'OSX', 'pngquant');
+    } else {
+        callback();
+        return;
     }
+
+    var quote = function (p) {
+        return '"' + String(p) + '"';
+    };
 
     var args = [
 
         '--quality=0-100',
         '--speed 2',
-        inImgPath,
+        quote(inImgPath),
         '--output',
-        outImgPath,
+        quote(outImgPath),
         '--force'
     ];
 
-    spawn.exec(program + ' ' + args.join(' '), function () {
+    spawn.exec(quote(program) + ' ' + args.join(' '), function (err) {
+
+        if (err) {
+            //压缩失败时仍然继续打包，避免整个转换流程中断
+            console.log('pngquant failed: ' + err.message);
+        }
         callback();
     });
 }
