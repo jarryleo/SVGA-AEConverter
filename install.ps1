@@ -64,7 +64,7 @@ Write-Step "组装扩展目录 ..."
 if (Test-Path $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
 New-Item -ItemType Directory -Path $stage | Out-Null
 
-foreach ($dir in @("CSXS", "jsx", "src", "pngquant", "node_modules")) {
+foreach ($dir in @("CSXS", "jsx", "src", "pngquant", "webp", "node_modules")) {
     Copy-Item -LiteralPath (Join-Path $source $dir) -Destination $stage -Recurse
 }
 Copy-Item -LiteralPath (Join-Path $source "index.html") -Destination $stage

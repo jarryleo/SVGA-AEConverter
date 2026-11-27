@@ -18,7 +18,7 @@ function New-Stage($dest) {
     New-Item -ItemType Directory -Path $dest | Out-Null
     $ext = Join-Path $dest $extName
     New-Item -ItemType Directory -Path $ext | Out-Null
-    foreach ($d in @("CSXS", "jsx", "src", "pngquant", "node_modules")) {
+    foreach ($d in @("CSXS", "jsx", "src", "pngquant", "webp", "node_modules")) {
         Copy-Item -LiteralPath (Join-Path $source $d) -Destination $ext -Recurse
     }
     Copy-Item -LiteralPath (Join-Path $source "index.html") -Destination $ext
@@ -155,7 +155,16 @@ SVGA-AEConverter —— After Effects 转 SVGA 插件（Windows 版）
 * 导出后元素有重影：请把每个元素的时间对齐到整帧
   （图层的入点/出点落在整帧边界），或在面板里确认工程帧率是
   1/2/3/4/5/6/10/12/15/20/30/60 这类能整除 60 的帧率。
+* 需要运行时替换图片（同尺寸换图）的图层，图层名包含 avatar / nick / id 即可
+  （大小写不敏感、空格可有可无），例如 avatar1、nick 2、id3：
+  插件会跳过这些贴图的裁剪与剔除，替换图才不会被拉伸或偏移。
+  老写法 #dynamic / #replace 仍然有效。
 * 图片压缩（pngquant）失败不影响导出，只是文件体积会略大。
+* 面板上的“文件体积优化”可选 PNG（兼容优先）/ WebP 无损 / WebP 有损 q80。
+  WebP 更小但不降低内存；iOS 13 及以下不支持 WebP，真机验证后再改默认档位。
+* 面板上的“内存占用优化”可整体关闭透明边裁剪 / 全透明剔除 / 强压缩，
+  用于 A/B 对比排查。
+* 面板播放器已支持 WebP 贴图预览（含“选择播放文件”直接打开 WebP 的 .svga）。
 
 四、卸载
 ---------------------------------------------------------
@@ -199,6 +208,7 @@ cp -R "$SRC" "$DEST" || { echo "[错误] 复制失败"; read -r -p "按回车退
 
 # 恢复可执行权限（zip 传输可能丢失）
 chmod -R 755 "$DEST/pngquant/OSX/pngquant" 2>/dev/null
+chmod -R 755 "$DEST/webp/OSX/cwebp" 2>/dev/null
 
 echo "正在开启 CEP 调试模式（未签名扩展必需）..."
 for v in 6 7 8 9 10 11 12; do
@@ -265,6 +275,7 @@ SVGA-AEConverter —— After Effects 转 SVGA 插件（macOS 版）
    defaults write com.adobe.CSXS.11 PlayerDebugMode 1
    defaults write com.adobe.CSXS.12 PlayerDebugMode 1
    chmod +x "~/Library/Application Support/Adobe/CEP/extensions/com.errnull.SVGAConverter_AE/pngquant/OSX/pngquant"
+   chmod +x "~/Library/Application Support/Adobe/CEP/extensions/com.errnull.SVGAConverter_AE/webp/OSX/cwebp"
 4. 重启 After Effects。
 
 三、使用
@@ -284,7 +295,16 @@ SVGA-AEConverter —— After Effects 转 SVGA 插件（macOS 版）
     可在终端执行：softwareupdate --install-rosetta
 * 图片压缩（pngquant）失败不影响导出，只是文件体积会略大；
   自带的 pngquant 是 Intel(x86_64) 版。
+* 面板上的“文件体积优化”可选 PNG（兼容优先）/ WebP 无损 / WebP 有损 q80。
+  WebP 更小但不降低内存；iOS 13 及以下不支持 WebP，真机验证后再改默认档位。
+* 面板上的“内存占用优化”可整体关闭透明边裁剪 / 全透明剔除 / 强压缩，
+  用于 A/B 对比排查。
+* 面板播放器已支持 WebP 贴图预览（含“选择播放文件”直接打开 WebP 的 .svga）。
 * 导出后元素有重影：请把每个元素的入点/出点对齐到整帧边界。
+* 需要运行时替换图片（同尺寸换图）的图层，图层名包含 avatar / nick / id 即可
+  （大小写不敏感、空格可有可无），例如 avatar1、nick 2、id3：
+  插件会跳过这些贴图的裁剪与剔除，替换图才不会被拉伸或偏移。
+  老写法 #dynamic / #replace 仍然有效。
 * 若提示“不支持的文件格式”，请确认工程已保存且激活的是合成（Comp）。
 
 五、卸载

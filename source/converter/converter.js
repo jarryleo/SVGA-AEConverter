@@ -34,6 +34,46 @@ var Converter = (function () {
             frameCount: Math.round(this.app.project.activeItem.frameRate * this.app.project.activeItem.duration),
         };
     };
+    //运行时替换用图：名字含 avatar / nick / id（大小写不敏感、空格可有可无）
+    Converter.prototype.isReplaceLayerName = function (name) {
+        if (!name) { return false; }
+        var k = String(name).toLowerCase().replace(/\s+/g, "");
+        if (k.indexOf("avatar") >= 0 || k.indexOf("nick") >= 0) { return true; }
+        return /(^|[^a-z0-9])id([^a-z]|$)/.test(k) || k.indexOf("idcard") >= 0;
+    };
+    //统一图片命名：匹配替换规则的图层直接用图层名做 imageKey（去空格/非法字符），
+    //老的 #dynamic / #replace 标记仍保留在文件名里；
+    //后处理（透明边裁剪、全透明元素剔除）会跳过这些图，保证运行时替换图不会被拉伸/错位。
+    Converter.prototype.buildImageName = function (source, rawName, fallbackName, matchName) {
+        var raw = rawName ? String(rawName) : "";
+        var layerRaw = matchName ? String(matchName) : "";
+        var marked = /#dynamic/i.test(raw) || /#replace/i.test(raw) ||
+            /#dynamic/i.test(layerRaw) || /#replace/i.test(layerRaw);
+        var matched = this.isReplaceLayerName(matchName) || this.isReplaceLayerName(raw);
+        var clean = raw.replace(/#(dynamic|replace)/ig, "").replace(/\s+/g, " ").trim();
+        var eName;
+        if (matched || marked) {
+            //替换用图：用图层名（没有就用素材名）生成 imageKey，去掉空格与非法字符
+            var nameSrc = this.isReplaceLayerName(layerRaw) || /#(dynamic|replace)/i.test(layerRaw) ? layerRaw : raw;
+            var base = String(nameSrc).replace(/#(dynamic|replace)/ig, "").replace(/[^a-zA-Z0-9\.\_\-]/g, "");
+            eName = base === "" ? ("replace_" + source.id) : base;
+        } else if (fallbackName) {
+            eName = fallbackName;
+        }
+        else if (clean === "" || /[^a-zA-Z0-9\.\_\-]/.test(clean)) {
+            eName = "img_" + source.id + ".png";
+        }
+        else {
+            eName = clean;
+        }
+        if (!/\.png$/i.test(eName)) {
+            eName += ".png";
+        }
+        if (marked) {
+            eName = eName.replace(/\.png$/i, "") + "#dynamic.png";
+        }
+        return eName;
+    };
     Converter.prototype.loadRes = function (layers, numLayers) {
         var m = {};
         for (var i = 1; i <= layers.length; i++) {
@@ -48,22 +88,15 @@ var Converter = (function () {
                 m[element.source.id] = true;
                 if (element.source.file.fsName.indexOf(".psd") > 0 || element.source.file.fsName.indexOf(".psb") > 0) {
                     this.res.push({
-                        name: "psd_" + element.source.id + ".png",
+                        name: this.buildImageName(element.source, element.source.name, "psd_" + element.source.id + ".png", element.name),
                         path: element.source.file.fsName,
                         source: element.source,
                         psdID: element.source.id.toString(),
                     });
                 }
                 else {
-                    var eName = element.source.name;
-                    if (element.source.name.match(/[^a-zA-Z0-9\.\_\-]/)) {
-                        eName = "img_" + element.source.id + ".png";
-                    }
-                    else {
-                        eName = element.source.name;
-                    }
                     this.res.push({
-                        name: eName,
+                        name: this.buildImageName(element.source, element.source.name, undefined, element.name),
                         path: element.source.file.fsName,
                         source: element.source,
                         psdID: undefined,
@@ -110,15 +143,10 @@ var Converter = (function () {
             else if (element.source instanceof Object && element.source.file) {
                 var eName = element.source.name;
                 if (eName.indexOf('.psd') > 0 || eName.indexOf('.psb') > 0) {
-                    eName = "psd_" + element.source.id + ".png";
+                    eName = this.buildImageName(element.source, element.source.name, "psd_" + element.source.id + ".png", element.name);
                 }
                 else {
-                    if (element.source.name.match(/[^a-zA-Z0-9\.\_\-]/)) {
-                        eName = "img_" + element.source.id + ".png";
-                    }
-                    else {
-                        eName = element.source.name;
-                    }
+                    eName = this.buildImageName(element.source, element.source.name, undefined, element.name);
                 }
                 if (parentValues) {
                     this.layers.push({

@@ -8,6 +8,7 @@
     <script type="text/javascript" src="./src/helpers/CSInterface.js"></script>
     <script type="text/javascript" src="./src/helpers/CSInterfaceHelper.js"></script>
     <script src="./src/assets/jquery.min.js"></script>
+    <script src="./src/actions/pngTrim.js"></script>
     <script src="./src/actions/PageActions.js"></script>
     <script src="./src/assets/jszip.min.js"></script>
     <script src="./src/assets/jszip-utils.min.js"></script>
@@ -73,36 +74,143 @@
         margin-left: 6px;
     }
 
+    /* 导出选项（文件体积优化 / 内存占用优化） */
+    #optionRow{
+        margin-top: 1.5%;
+    }
+    #optionRow .optLabel{
+        font-size: 12px;
+        color: #cccccc;
+        margin-right: 0;
+    }
+    #optionRow .optSelect{
+        height: 26px;
+        font-size: 12px;
+        margin-right: 10px;
+        background-color: #3a3a3a;
+        color: #e8e8e8;
+        border: 1px solid #666666;
+        border-radius: 3px;
+        padding: 0 2px;
+    }
+
+    /* 悬浮说明：? 图标 + 气泡 */
+    .optHelp{
+        position: relative;
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        line-height: 14px;
+        text-align: center;
+        border-radius: 50%;
+        background-color: #6a6a6a;
+        color: #ffffff;
+        font-size: 11px;
+        margin: 0 6px 0 3px;
+        cursor: help;
+        vertical-align: middle;
+    }
+    .optHelp .tip{
+        display: none;
+        position: absolute;
+        left: -8px;
+        top: 20px;
+        width: 232px;
+        padding: 8px;
+        background-color: #1f1f1f;
+        color: #dddddd;
+        border: 1px solid #666666;
+        border-radius: 4px;
+        font-size: 12px;
+        line-height: 1.55;
+        text-align: left;
+        text-indent: 0;
+        letter-spacing: 0;
+        white-space: normal;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, .5);
+        z-index: 30;
+    }
+    .optHelp .tip.right{
+        left: auto;
+        right: -8px;
+    }
+    .optHelp:hover .tip{
+        display: block;
+    }
+    .optHelp:hover{
+        background-color: #5cb85c;
+    }
+
     #dropDownMenu{
         text-align: left;
         left: 12 !important;
         width: 140px;
     }
 
-    /* 右下角：安卓内存预估 */
-    #memoryUsage{
-        position: fixed;
-        right: 10px;
-        bottom: 8px;
+    /* 导出进度：细进度条 + 文案（含已用时间） */
+    #progressRow{
+        display: flex;
+        align-items: center;
+        width: 400px;
+        margin-top: 8px;
+        padding: 0;
+    }
+    #progressTrack{
+        position: relative;
+        flex: 1;
+        height: 6px;
+        background-color: #333333;
+        border-radius: 3px;
+        overflow: hidden;
+    }
+    #progressFill{
+        height: 100%;
+        width: 0%;
+        background-color: #5cb85c;
+        transition: width .25s ease;
+    }
+    #progressFill.indeterminate{
+        width: 35%;
+        animation: progressSlide 1.2s linear infinite;
+    }
+    @keyframes progressSlide{
+        0%   { transform: translateX(-100%); }
+        100% { transform: translateX(320%); }
+    }
+    #progressText{
         font-size: 12px;
         color: #cccccc;
-        z-index: 10;
+        margin-left: 8px;
+        white-space: nowrap;
+    }
+
+    /* 底部一行：左署名 / 右内存预估，独立成行，不再压在画布上 */
+    #footerRow{
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 400px;
+        margin-top: 6px;
+        margin-bottom: 6px;
+        padding: 0;
+    }
+
+    #memoryUsage{
+        font-size: 12px;
+        color: #cccccc;
         text-align: right;
-        pointer-events: auto;
+        white-space: nowrap;
     }
 
     /* 左下角：作者署名（可点击跳转仓库） */
     #authorSign{
-        position: fixed;
-        left: 10px;
-        bottom: 8px;
         font-size: 12px;
         color: #cccccc;
-        z-index: 10;
         letter-spacing: 0.3px;
         user-select: none;
         cursor: pointer;
         transition: color .15s ease;
+        white-space: nowrap;
     }
     #authorSign:hover{
         color: #ffffff;
@@ -142,14 +250,36 @@
 
     </div>
 
+    <div class="row clearfix" id="optionRow">
+        <div class="col-md-12 column">
+            <label class="optLabel" for="imageFormat">文件体积优化</label><span class="optHelp">?<span class="tip">PNG（兼容优先）：体积最大，但所有 SVGA 播放器都能读。<br>WebP 无损：再小 20%~35%，画质无损。<br>WebP 有损 q80：渐变/光效类素材可再降 40%~60%，文字描边可能出现轻微振铃。<br>注意：换格式只减体积，<b>不降内存</b>；iOS 13 及以下、部分老播放器不支持 WebP。</span></span>
+            <select id="imageFormat" class="optSelect" style="width: 100px">
+                <option value="png">PNG（兼容优先）</option>
+                <option value="webp_lossless">WebP 无损</option>
+                <option value="webp_lossy">WebP 有损 q80</option>
+            </select>
+            <label class="optLabel" for="optimizeOption">内存占用优化</label><span class="optHelp">?<span class="tip right">开：裁掉每张贴图的透明边、剔除全透明元素，安卓解码后的内存按裁后尺寸估算，通常明显下降。<br>弊端：导出更慢；被裁过的贴图不能再拿原尺寸图运行时替换——图层名含 avatar / nick / id 的会自动跳过（如 avatar1、nick 2、id3）。<br>关：保持原始导出行为。</span></span>
+            <select id="optimizeOption" class="optSelect" style="width: 90px; margin-right: 0">
+                <option value="1">开</option>
+                <option value="0">关</option>
+            </select>
+        </div>
+    </div>
+
     <div class="row clearfix">
         <div class="col-md-12 column">
-            <div id="canvas" style="background-color: #333333; width: 400px; height: 400px"></div>
+            <div id="canvas" style="background-color: #333333; width: 400px; height: 340px"></div>
         </div>
     </div>
     <div class="box" id="box"></div>
-    <div id="authorSign" title="点击打开 GitHub 仓库：github.com/jarryleo/SVGA-AEConverter" onclick="openAuthorRepo(event)">Jarry Leo · <span id="authorVersion">v1.1.0</span></div>
-    <div id="memoryUsage">预估内存：-- MB</div>
+    <div id="progressRow">
+        <div id="progressTrack"><div id="progressFill"></div></div>
+        <div id="progressText">就绪</div>
+    </div>
+    <div id="footerRow">
+        <div id="authorSign" title="点击打开 GitHub 仓库：github.com/jarryleo/SVGA-AEConverter" onclick="openAuthorRepo(event)">Jarry Leo · <span id="authorVersion">v1.1.0</span></div>
+        <div id="memoryUsage">预估内存：-- MB</div>
+    </div>
 </div>
 
 <script type="text/javascript">
@@ -158,6 +288,28 @@
             document.getElementById("dropGroupDiv").className = "col-md-5 btn-group";
         }
     }
+
+    // 导出选项（图片格式 / 优化开关）：记住上次选择
+    (function initExportOptions() {
+        var fmt = document.getElementById('imageFormat');
+        var opt = document.getElementById('optimizeOption');
+        try {
+            var savedFmt = localStorage.getItem('svga_image_format');
+            if (savedFmt && fmt) { fmt.value = savedFmt; }
+            var savedOpt = localStorage.getItem('svga_optimize');
+            if (savedOpt && opt) { opt.value = savedOpt; }
+        } catch (e) { }
+        if (fmt) {
+            fmt.addEventListener('change', function () {
+                try { localStorage.setItem('svga_image_format', fmt.value); } catch (e) { }
+            });
+        }
+        if (opt) {
+            opt.addEventListener('change', function () {
+                try { localStorage.setItem('svga_optimize', opt.value); } catch (e) { }
+            });
+        }
+    })();
 
     // 左下角署名：点击打开 GitHub 仓库
     var AUTHOR_REPO_URL = "https://github.com/jarryleo/SVGA-AEConverter";

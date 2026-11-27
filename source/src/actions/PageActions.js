@@ -27,6 +27,13 @@ var EXTENSION_PATH = csInterface.getSystemPath(SystemPath.EXTENSION);
 var TEMP_SOURCE_PATH = nodePath.join(csInterface.getSystemPath(SystemPath.MY_DOCUMENTS), '_WORKINGTEMP_');
 var CURRENT_OUTPUT_VERSION = "2.0";
 
+//最近一次导出后处理（裁剪/剔除）的统计，用于内存标签与日志
+var LAST_TRIM_STATS = null;
+
+//导出选项：图片格式（png / webp_lossless / webp_lossy）与优化开关（裁剪/剔除/强压）
+var CURRENT_IMAGE_FORMAT = 'png';
+var EXPORT_OPTIMIZE = true;
+
 // 关闭窗口的时候关闭服务器
 window.onunload = function()
 {
@@ -100,6 +107,17 @@ function startConvert() {
     var memoryEl = document.getElementById('memoryUsage');
     if (memoryEl) { memoryEl.textContent = '预估内存：计算中…'; }
 
+    //读取面板上的导出选项（图片格式 / 优化开关）
+    var formatEl = document.getElementById('imageFormat');
+    CURRENT_IMAGE_FORMAT = formatEl ? String(formatEl.value) : 'png';
+    var optimizeEl = document.getElementById('optimizeOption');
+    EXPORT_OPTIMIZE = optimizeEl ? String(optimizeEl.value) !== '0' : true;
+
+    //新一轮导出：重置计时与进度
+    PROGRESS_T0 = 0;
+    stopProgressClock();
+    setProgress(-1, '准备临时工程…');
+
     createTempFolder(function () {
         var startConvertBtn = document.getElementById("startConvertBtn");
         startConvertBtn.disabled = true;
@@ -130,10 +148,12 @@ function startConvert() {
             //临时工程保存失败时不要继续转换，否则会拿原工程去转，结果不可控
             if (typeof result === "string" && result.indexOf("ERROR:") === 0) {
                 alertMessages(result.substring("ERROR:".length));
+                setProgress(0, '导出失败');
                 setBusy(false);
                 return;
             }
 
+            setProgress(-1, 'AE 渲染序列帧…');
             csInterface.evalScript("startConvert('" + escapeForJsx(toSlash(tempWorkPath)) + "');", function (result) {
 
                 csInterface.evalScript("openProject('" + escapeForJsx(CURRENT_FILE_PATH) + "');");
@@ -147,6 +167,7 @@ function startConvert() {
 
                 if (errMsg) {
                     alertMessages(errMsg);
+                    setProgress(0, '导出失败');
                     setBusy(false);
                     return;
                 }
@@ -170,14 +191,41 @@ function startConvert() {
                     }
                     var imageList = files;
 
-                    //根据导出的贴图尺寸预估安卓设备内存占用
-                    updateMemoryUsage(imagePath, imageList);
+                    //打包：预估内存（按裁剪后的贴图尺寸）+ 按版本走二进制/ZIP
+                    var packageOutput = function (list) {
+                        try {
+                            updateMemoryUsage(imagePath, list);
+                            setProgress(-1, list.length ? '打包贴图…' : '写入文件…');
+                            if(CURRENT_OUTPUT_VERSION == "2.0"){
+                                copyToBinary(imagePath, list);
+                            }else{
+                                copyToZip(imagePath, list);
+                            }
+                        } catch (e) {
+                            console.log('package failed: ' + (e.stack || e.message));
+                            alertMessages('导出失败：' + e.message);
+                            setProgress(0, '导出失败');
+                            setExportBusy(false);
+                        }
+                    };
 
-                    if(CURRENT_OUTPUT_VERSION == "2.0"){
-                        copyToBinary(imagePath, imageList);
-                    }else{
-                        copyToZip(imagePath, imageList);
+                    if (!EXPORT_OPTIMIZE) {
+                        //优化开关关闭：保持原始导出行为（不裁剪、不剔除、pngquant 用旧参数）
+                        LAST_TRIM_STATS = null;
+                        packageOutput(imageList);
+                        return;
                     }
+
+                    //导出后处理：剔除全透明元素 + 透明边裁剪（#dynamic 替换用图会跳过）
+                    setProgress(-1, '优化贴图（裁剪 / 剔除）…');
+                    optimizeSvgaWorks(imagePath, imageList, function (optErr, optResult) {
+                        if (optErr) {
+                            console.log('optimize svga works failed: ' + optErr.message);
+                        }
+                        var finalList = (optResult && optResult.imageList) ? optResult.imageList : imageList;
+                        LAST_TRIM_STATS = optResult ? optResult.stats : null;
+                        packageOutput(finalList);
+                    });
                 });
             });
         });
@@ -212,6 +260,86 @@ function createTempFolder(callback) {
             callback();
         });
     });
+}
+
+//导出完成后打印产物大小，便于对比不同格式/优化开关的效果
+function logOutputInfo() {
+    try {
+        var st = fs.statSync(outPutPath);
+        console.log('输出: ' + nodePath.basename(outPutPath) +
+            ' / ' + (st.size / 1024).toFixed(1) + ' KB' +
+            ' / 图片格式 ' + CURRENT_IMAGE_FORMAT +
+            ' / 优化 ' + (EXPORT_OPTIMIZE ? '开' : '关'));
+    } catch (e) { }
+}
+
+function setExportBusy(busy) {
+    var a = document.getElementById('startConvertBtn');
+    var b = document.getElementById('dropDownBtn');
+    if (a) { a.disabled = busy; }
+    if (b) { b.disabled = busy; }
+}
+
+// —— 导出进度：0~100 为确定进度；负数表示不确定进度（走条纹动画）——
+var PROGRESS_T0 = 0;
+var PROGRESS_TIMER = null;
+var PROGRESS_BASE = '';
+
+function stopProgressClock() {
+    if (PROGRESS_TIMER) { clearInterval(PROGRESS_TIMER); PROGRESS_TIMER = null; }
+}
+
+function renderProgressText() {
+    var el = document.getElementById('progressText');
+    if (!el) { return; }
+    var suffix = PROGRESS_T0 ? ' · ' + ((Date.now() - PROGRESS_T0) / 1000).toFixed(1) + 's' : '';
+    el.textContent = (PROGRESS_BASE || '处理中') + suffix;
+}
+
+function setProgress(percent, text) {
+    var isFailure = text === '导出失败';
+    if (text) { PROGRESS_BASE = text; }
+    if (isFailure) {
+        //失败时停表，保留失败文案，不继续累加时间
+        stopProgressClock();
+        PROGRESS_T0 = 0;
+    } else if (PROGRESS_BASE && !PROGRESS_T0) {
+        PROGRESS_T0 = Date.now();
+        stopProgressClock();
+        PROGRESS_TIMER = setInterval(renderProgressText, 500);
+    }
+
+    var fill = document.getElementById('progressFill');
+    if (fill) {
+        if (percent < 0) {
+            fill.className = 'indeterminate';
+            fill.style.width = '';
+        } else {
+            fill.className = '';
+            fill.style.width = Math.max(0, Math.min(100, percent)) + '%';
+        }
+    }
+
+    if (percent >= 100) {
+        var elapsed = PROGRESS_T0 ? ((Date.now() - PROGRESS_T0) / 1000).toFixed(1) : null;
+        stopProgressClock();
+        PROGRESS_T0 = 0;
+        var t = document.getElementById('progressText');
+        if (t) {
+            t.textContent = PROGRESS_BASE + (elapsed ? ' · 用时 ' + elapsed + 's' : '');
+        }
+        return;
+    }
+    renderProgressText();
+}
+
+//导出收尾：记录体积、播放预览，然后清临时目录
+//（面板播放器已打补丁支持 WebP 贴图，直接播导出的文件即可，不再需要 PNG 预览包）
+function previewAfterExport(done) {
+    logOutputInfo();
+    setProgress(100, '导出完成');
+    try { preview(outPutPath); } catch (e) { }
+    if (done) { done(); }
 }
 
 function preview(filePath) {
@@ -276,9 +404,25 @@ function readJpegSize(filePath) {
     }
 }
 
+//WebP 尺寸（RIFF/VP8X、VP8、VP8L），用于选了 WebP 格式后的内存/体积统计
+function readWebpSize(filePath) {
+    try {
+        if (typeof webpSize !== 'function') { return null; }
+        var fd = fs.openSync(filePath, 'r');
+        var buf = Buffer.alloc(4096);
+        var len = fs.readSync(fd, buf, 0, buf.length, 0);
+        fs.closeSync(fd);
+        return webpSize(buf.slice(0, len));
+    } catch (e) {
+        return null;
+    }
+}
+
 function readImageSize(filePath) {
     var png = readPngSize(filePath);
     if (png) { return png; }
+    var webp = readWebpSize(filePath);
+    if (webp) { return webp; }
     return readJpegSize(filePath);
 }
 
@@ -308,10 +452,36 @@ function updateMemoryUsage(dir, imageList) {
         el.textContent = '预估内存：' + result.mb.toFixed(2) + ' MB' +
             (result.unknown > 0 ? '（' + result.unknown + ' 张无法解析）' : '');
         el.title = '按安卓 ARGB_8888（4 字节/像素）估算 ' + result.count + ' 张贴图解码后的内存占用';
+        if (LAST_TRIM_STATS) {
+            el.title += '；本次裁剪 ' + LAST_TRIM_STATS.trimmedImages + ' 张、剔除 ' +
+                (LAST_TRIM_STATS.prunedSprites + LAST_TRIM_STATS.removedImages) + ' 项';
+        }
     } catch (e) {
         el.textContent = '预估内存：计算失败';
         console.log('estimate memory failed: ' + e.message);
     }
+}
+// —— 导出后处理：全透明元素剔除 + 透明边裁剪（实现在 pngTrim.js，纯 Node 无依赖）——
+// 名字带 #dynamic / #replace 的图层（imageKey 里会保留标记）视为"动态替换用图"，
+// 既不裁剪也不剔除，保证运行时用同尺寸图片替换后不会被 layout 拉伸、错位。
+function optimizeSvgaWorks(workDir, imageList, callback) {
+    var result = null;
+    var err = null;
+    try {
+        if (typeof optimizeWorksDir !== 'function') {
+            throw new Error('pngTrim.js 未加载，跳过导出后处理');
+        }
+        result = optimizeWorksDir(workDir, imageList);
+        console.log('svga optimize: 元素剔除 ' + result.stats.prunedSprites +
+            '，图片裁剪 ' + result.stats.trimmedImages +
+            '，删除图片 ' + result.stats.removedImages +
+            '，保护 ' + result.stats.protectedImages +
+            '，像素减少 ' + result.stats.savedPixels);
+    } catch (e) {
+        err = e;
+    }
+    //callback 必须放在 try 外面，否则打包阶段抛出的异常会被当成"优化失败"再回调一次
+    callback(err, result);
 }
 
 function copyToBinary(zipPath, imageList) {
@@ -326,11 +496,13 @@ function copyToBinary(zipPath, imageList) {
 
         var stream = new Buffer(SVGAProtoHelper_2_0_0.convertToProto(spec, fileMapping));
         fs.writeFileSync(outPutPath, zlib.deflateSync(stream));
-        // 删除临时文件目录
-        deleteFlider(workPath, true, true, function () {
+        previewAfterExport(function () {
+            // 删除临时文件目录
+            deleteFlider(workPath, true, true, function () {
+            });
+            outPutPath = undefined;
+            setExportBusy(false);
         });
-        preview(outPutPath);
-        outPutPath = undefined;
     }
 }
 
@@ -340,11 +512,21 @@ function stepToBinary(fileMapping, currentIndex, imageList, zipPath, callback) {
 
     var pngquantAndZip = function (imagePath) {
 
-        pngquantImage(imagePath, imagePath, function () {
+        //贴图逐个转码是导出最耗时的一段，按张数给出确定进度
+        setProgress((currentIndex / imageList.length) * 100,
+            '编码贴图 ' + (currentIndex + 1) + '/' + imageList.length);
+        encodeImageFile(imagePath, function () {
 
             waitForFileIfExist(imagePath, function () {
 
                 fs.readFile(imagePath, function (err, data) {
+
+                    if (err || !data) {
+                        console.log('read texture failed: ' + imageName + ' ' + (err ? err.message : 'empty'));
+                        alertMessages('导出失败：读取贴图 ' + imageName + ' 失败');
+                        setExportBusy(false);
+                        return;
+                    }
 
                     fileMapping[imageName.split('.')[0]] = toArrayBuffer(data);
 
@@ -354,10 +536,12 @@ function stepToBinary(fileMapping, currentIndex, imageList, zipPath, callback) {
                         var stream = new Buffer(SVGAProtoHelper_2_0_0.convertToProto(spec, fileMapping));
 
                         fs.writeFileSync(outPutPath, zlib.deflateSync(stream));
-                        // 删除临时文件目录
-                        deleteFlider(workPath, true, true, function () {});
-                        preview(outPutPath);
-                        outPutPath = undefined;
+                        previewAfterExport(function () {
+                            // 删除临时文件目录
+                            deleteFlider(workPath, true, true, function () {});
+                            outPutPath = undefined;
+                            setExportBusy(false);
+                        });
 
                     }else {
                         stepToBinary(fileMapping, ++currentIndex, imageList, zipPath);
@@ -381,11 +565,13 @@ function stepToBinary(fileMapping, currentIndex, imageList, zipPath, callback) {
             var spec = JSON.parse(fs.readFileSync(zipPath + '/movie.spec', { encoding: "utf-8" }));
             var stream = new Buffer(SVGAProtoHelper_2_0_0.convertToProto(spec, fileMapping));
             fs.writeFileSync(outPutPath, zlib.deflateSync(stream));
-            // 删除临时文件目录
-            deleteFlider(workPath, true, true, function () {
+            previewAfterExport(function () {
+                // 删除临时文件目录
+                deleteFlider(workPath, true, true, function () {
+                });
+                outPutPath = undefined;
+                setExportBusy(false);
             });
-            preview(outPutPath);
-            outPutPath = undefined;
 
         }else {
             stepToBinary(fileMapping, ++currentIndex, imageList, zipPath);
@@ -419,9 +605,11 @@ function copyToZip(zipPath, imageList) {
                 fs.writeFile(outPutPath, content, 'Base64', function (err) {
 
                     // 删除 temp 目录
-                    deleteFlider(TEMP_SOURCE_PATH, true, true, function () {});
-                    preview(outPutPath);
-                    outPutPath = undefined;
+                    previewAfterExport(function () {
+                        deleteFlider(TEMP_SOURCE_PATH, true, true, function () {});
+                        outPutPath = undefined;
+                        setExportBusy(false);
+                    });
                 });
             });
     }
@@ -434,11 +622,21 @@ function stepToZip(zip, currentIndex, imageList, zipPath, callback) {
 
     var pngquantAndZip = function (imagePath) {
 
-        pngquantImage(imagePath, imagePath, function () {
+        //贴图逐个转码是导出最耗时的一段，按张数给出确定进度
+        setProgress((currentIndex / imageList.length) * 100,
+            '编码贴图 ' + (currentIndex + 1) + '/' + imageList.length);
+        encodeImageFile(imagePath, function () {
 
             waitForFileIfExist(imagePath, function () {
 
                 fs.readFile(imagePath, 'Base64', function (err, data) {
+
+                    if (err || !data) {
+                        console.log('read texture failed: ' + imageName + ' ' + (err ? err.message : 'empty'));
+                        alertMessages('导出失败：读取贴图 ' + imageName + ' 失败');
+                        setExportBusy(false);
+                        return;
+                    }
 
                     zip.file(imageName, data, {base64: true});
 
@@ -460,9 +658,11 @@ function stepToZip(zip, currentIndex, imageList, zipPath, callback) {
                                 // 将文件写入本地
                                 fs.writeFile(outPutPath, content, 'Base64', function (err) {
 
-                                    deleteFlider(TEMP_SOURCE_PATH, true, true, function () {});
-                                    preview(outPutPath);
-                                    outPutPath = undefined;
+                                    previewAfterExport(function () {
+                                        deleteFlider(TEMP_SOURCE_PATH, true, true, function () {});
+                                        outPutPath = undefined;
+                                        setExportBusy(false);
+                                    });
                                 });
                             });
 
@@ -581,6 +781,61 @@ function toArrayBuffer(buf) {
     return ab;
 }
 
+//cwebp 随扩展发布（source/webp），按平台取二进制；缺失时自动回退 PNG
+function cwebpProgram() {
+    var OSVersion = csInterface.getOSInformation();
+    if (OSVersion.indexOf("Windows") >= 0) {
+        return nodePath.join(EXTENSION_PATH, 'webp', 'WINDOWS', 'cwebp.exe');
+    }
+    if (OSVersion.indexOf("Mac") >= 0) {
+        return nodePath.join(EXTENSION_PATH, 'webp', 'OSX', 'cwebp');
+    }
+    return null;
+}
+
+function convertImageToWebp(imagePath, lossless, callback) {
+    var program = cwebpProgram();
+    if (!program || !fs.existsSync(program)) {
+        console.log('cwebp 缺失，回退 PNG');
+        callback(false);
+        return;
+    }
+    var quote = function (p) { return '"' + String(p) + '"'; };
+    var tmp = imagePath + '.webp.tmp';
+    var options = lossless
+        ? ['-lossless', '-q', '100', '-m', '6', '-exact', '-metadata', 'none']
+        : ['-q', '80', '-m', '6', '-alpha_q', '100', '-metadata', 'none'];
+    var cmd = quote(program) + ' ' + options.join(' ') + ' -quiet ' + quote(imagePath) + ' -o ' + quote(tmp);
+    spawn.exec(cmd, function (err) {
+        var ok = false;
+        try {
+            if (!err && fs.existsSync(tmp) && fs.statSync(tmp).size > 0) {
+                fs.unlinkSync(imagePath);
+                fs.renameSync(tmp, imagePath);
+                ok = true;
+            } else {
+                console.log('cwebp failed: ' + (err ? err.message : 'no output'));
+            }
+        } catch (e) {
+            console.log('cwebp replace failed: ' + e.message);
+        }
+        try { if (fs.existsSync(tmp)) { fs.unlinkSync(tmp); } } catch (e) { }
+        callback(ok);
+    });
+}
+
+//按面板选择的格式编码：PNG 走 pngquant，WebP 走 cwebp（失败自动回退 PNG）
+function encodeImageFile(imagePath, callback) {
+    if (CURRENT_IMAGE_FORMAT === 'webp_lossless' || CURRENT_IMAGE_FORMAT === 'webp_lossy') {
+        convertImageToWebp(imagePath, CURRENT_IMAGE_FORMAT === 'webp_lossless', function (ok) {
+            if (ok) { callback(); return; }
+            pngquantImage(imagePath, imagePath, callback);
+        });
+        return;
+    }
+    pngquantImage(imagePath, imagePath, callback);
+}
+
 function pngquantImage(inImgPath, outImgPath, callback) {
 
     var program;
@@ -604,10 +859,16 @@ function pngquantImage(inImgPath, outImgPath, callback) {
         return '"' + String(p) + '"';
     };
 
+    var qualityArgs = EXPORT_OPTIMIZE
+        ? ['--quality=0-85', '--speed 1']   //优化开启：更狠的压缩（更慢、更小）
+        : ['--quality=0-100', '--speed 2']; //优化关闭：保持原始参数
+
     var args = [
 
-        '--quality=0-100',
-        '--speed 2',
+        //压缩硬化：速度档从 2 降到 1（最慢、体积最小），质量下限放宽到 0-85
+        //（pngquant 没有 --strip 参数，写元数据本来就默认丢弃）
+        qualityArgs[0],
+        qualityArgs[1],
         quote(inImgPath),
         '--output',
         quote(outImgPath),
